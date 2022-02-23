@@ -55,9 +55,9 @@ def getRecentTargetDate(targetDate):
         直近のチェック対象日取得。
         基本は前日だが、休日除外設定の場合は直近の営業日。
     Args:
-        targetDate (date): チェック日
+        targetDate (date/relativedelta): チェック日
     Returns:
-        rtd(date): 直近チェック対象日
+        rtd (relativedelta): 直近チェック対象日
     """
     rtd = targetDate - relativedelta(days=1)
     if args.exholiday and isHoliday(rtd, HOLIDAY_LIST):
@@ -82,9 +82,9 @@ def getSpan(targetDate, type):
     try:
         # 締め期間ルール設定
         if type == 1:
-            FROM_DAY = 21
+            fromDayNumber = 21
         elif type == 2 or type == 3:
-            FROM_DAY = 1
+            fromDayNumber = 1
         else:
             logger.error(str(getCurLineNo())+' input type error. type:' + type)
             raise ValueError
@@ -92,12 +92,12 @@ def getSpan(targetDate, type):
         # 基準日を取得
         baseDate = getRecentTargetDate(targetDate)
         # 当月開始日より前
-        if baseDate.day < FROM_DAY:
-            toDate = date(baseDate.year, baseDate.month, FROM_DAY) - relativedelta(days=1)
+        if baseDate.day < fromDayNumber:
+            toDate = date(baseDate.year, baseDate.month, fromDayNumber) - relativedelta(days=1)
             fromDate = toDate - relativedelta(months=1) + relativedelta(days=1)
         # 当月開始日以降
         else :
-            fromDate = date(baseDate.year, baseDate.month, FROM_DAY)
+            fromDate = date(baseDate.year, baseDate.month, fromDayNumber)
             toDate = fromDate + relativedelta(months=1) - relativedelta(days=1)
 
     except ValueError as e :
@@ -331,7 +331,7 @@ def getOverWork():
         NAME = "氏名"
         CMPID = "社員番号"
         TOTALTIME = "残業合計"
-        ESTIMATETIME = "期間予測時間"
+        ESTIMATETIME = "月間予測"
         EMPTY_MARK = "----" # 稼働時間ゼロ表示
         #----------------------------------------
 
@@ -409,8 +409,9 @@ def getOverWork():
                     # 対象日のデータ取得を終えたらインクリメントして翌日へ
                     curdate += relativedelta(days=1)
 
-                # 期間予測時間の取得　→24Hを超えると想定通りの動作にならない
-                wt[ESTIMATETIME] = wt[TOTALTIME] / termProgress
+                # 月間予測時間の取得
+                totalminute = wt[TOTALTIME].days*1440 + wt[TOTALTIME].hours*60 + wt[TOTALTIME].minutes
+                wt[ESTIMATETIME] = relativedelta(minutes= int(totalminute / termProgress))
 
                 # reletivedelta型をHH:MM型の文字列に変換
                 for key in wt.keys():
@@ -518,7 +519,7 @@ def teamsAddFact(section, facts):
     return()
 
 ####################################
-# 社員番号削除
+# 不要要素削除
 ####################################
 def deleteElement(rets):
     """
@@ -831,21 +832,21 @@ def isContainDate(mmdd, startdate, enddate):
 ####################################
 # 期間経過率取得
 ####################################
-def getTermProgress(nowDate, startdate, enddate):
+def getTermProgress(baseDate, startdate, enddate):
     """
     Overview
         期間経過率を取得する。
     Args
-        nowDate date : チェック実施日
+        baseDate date : チェック基準日
         startdate date : 開始日
         enddate date : 終了日
     Return
         ret int : 経過率
     """
-    logger.debug(str(getCurLineNo())+' START function nowDate:'+str(nowDate)+' startdate:'+str(startdate)+' enddate:'+str(enddate))
+    logger.debug(str(getCurLineNo())+' START function baseDate:'+str(baseDate)+' startdate:'+str(startdate)+' enddate:'+str(enddate))
     try:
-        td_progress = abs(nowDate - startdate).days
-        td_all = abs(enddate - startdate).days
+        td_progress = abs(baseDate - startdate + relativedelta(days=1)).days
+        td_all = abs(enddate - startdate + relativedelta(days=1)).days
         ret = td_progress / td_all
         return ret
         
@@ -920,7 +921,8 @@ startdate,enddate = getSpan(nowDate,mode)
 logger.info(str(getCurLineNo())+" collectionTerm: "+str(startdate)+" - "+str(enddate))
 
 # 期間内経過率取得
-termProgress = getTermProgress(nowDate, startdate, enddate)
+termProgress = getTermProgress(getRecentTargetDate(nowDate), startdate, enddate)
+logger.info(str(getCurLineNo())+" termProgress: "+str(termProgress))
 
 # webDriver起動
 try:
